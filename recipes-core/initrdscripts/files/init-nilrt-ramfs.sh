@@ -204,6 +204,7 @@ mount -o ro,sync,relatime "/dev/niboot/niboot.current" "$B_MNT"
 readonly U_MNT="/mnt/niuser"
 mkdir "$U_MNT"
 
+OVERLAY_DIR="overlay"
 readonly U_OVERLAY_CFG="$U_MNT/overlay/upper/etc/niboot/init-action.cfg"
 
 function mount_niuser_helper() {
@@ -304,6 +305,9 @@ init_options=""
 
 if $boot_safemode; then
     init_options="4"
+    OVERLAY_DIR="overlay.safemode"
+    rm -Rf "$U_MNT/$OVERLAY_DIR"
+    mkdir -p "$U_MNT/$OVERLAY_DIR"
 fi
 
 for file in /sys/bus/acpi/drivers/nirtfeatures/*/ip_reset; do
@@ -317,19 +321,28 @@ for file in /sys/bus/acpi/drivers/nirtfeatures/*/ip_reset; do
 done
 
 status "Create mount point for overlay"
-mkdir -p "$U_MNT/overlay/lower"
-mkdir -p "$U_MNT/overlay/upper"
-mkdir -p "$U_MNT/overlay/work"
-mkdir -p "$U_MNT/overlay/image"
+mkdir -p "$U_MNT/$OVERLAY_DIR/lower"
+mkdir -p "$U_MNT/$OVERLAY_DIR/upper"
+mkdir -p "$U_MNT/$OVERLAY_DIR/work"
+mkdir -p "$U_MNT/$OVERLAY_DIR/image"
+
+# HACK HACK HACK
+# Without a better way of detecting that this is a safemode boot,
+# from within an initscript in the rcS.d folder, touch a known
+# file so the existence of the file can be checked in the script.
+if $boot_safemode ; then
+    mkdir -p "$U_MNT/$OVERLAY_DIR/upper/etc/niboot"
+    touch "$U_MNT/$OVERLAY_DIR/upper/etc/niboot/safemode"
+fi
 
 status "Mount lower filesystem"
-mount -o ro -t squashfs "$B_MNT/baserootfs.squashfs" "$U_MNT/overlay/lower"
+mount -o ro -t squashfs "$B_MNT/baserootfs.squashfs" "$U_MNT/$OVERLAY_DIR/lower"
 
 status "Create overlay image"
-mount -t overlay -o lowerdir="$U_MNT/overlay/lower,upperdir=$U_MNT/overlay/upper,workdir=$U_MNT/overlay/work" overlay "$U_MNT/overlay/image"
+mount -t overlay -o lowerdir="$U_MNT/$OVERLAY_DIR/lower,upperdir=$U_MNT/$OVERLAY_DIR/upper,workdir=$U_MNT/$OVERLAY_DIR/work" overlay "$U_MNT/$OVERLAY_DIR/image"
 
 status "Move boot"
-mount --move "$B_MNT" "$U_MNT/overlay/image/boot"
+mount --move "$B_MNT" "$U_MNT/$OVERLAY_DIR/image/boot"
 
 # Remove sync option from niuser mount in preparation for toggle
 sync
@@ -338,6 +351,6 @@ mount -o remount,async "$U_MNT"
 status "Restore printk_devkmsg=$ORIG_KMSG_CONFIG"
 echo "$ORIG_KMSG_CONFIG" > "/proc/sys/kernel/printk_devkmsg"
 
-status "Running switch_root to $U_MNT/overlay/image/"
-exec switch_root "$U_MNT/overlay/image/" /sbin/init $init_options
+status "Running switch_root to $U_MNT/$OVERLAY_DIR/image/"
+exec switch_root "$U_MNT/$OVERLAY_DIR/image/" /sbin/init $init_options
 
