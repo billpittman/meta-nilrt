@@ -20,34 +20,15 @@
 #
 #     According to $BOOT_MODE_INPUT the $BOOT_CONFIG_LOCATION file will be set
 #     for next boot mode.
-
-if [[ -f /usr/lib/nisetbootmode.functions ]]; then
-	source /usr/lib/nisetbootmode.functions
-else
-	echo "Missing file:/usr/lib/nisetbootmode.functions"
-	exit 1
-fi
-
-# Verify all the necessary utilities exist
-check_file $BOOT_CONFIG_LOCATION
+readonly BOOT_MODE_INPUT="/etc/niboot/init-action.cfg"
 
 case "$1" in
-  auto-restore)
-    echo auto-restore >$BOOT_MODE_INPUT
-    ;;
-  restore)
-    echo restore >$BOOT_MODE_INPUT
-    ;;
-  default)
-    rm $BOOT_MODE_INPUT 2>/dev/null
+  safemode)
+    echo "boot_safemode=true" >$BOOT_MODE_INPUT
     ;;
   *)
-    echo "Usage: $progname {restore|auto-restore|default}" >&2
+    echo "Usage: $progname {safemode|auto-restore|default}" >&2
     exit 1
     ;;
 esac
-
-checkbootmode
-
-exit 0
 
