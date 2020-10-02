@@ -28,6 +28,7 @@ SRC_URI = " \
     file://transconf \
     file://example_transconf_hook \
     file://run-ptest \
+    file://transconf-migrate-init \
 "
 
 do_install () {
@@ -38,6 +39,11 @@ do_install () {
     install -d ${D}${sysconfdir}/transconf
     install -d ${D}${sysconfdir}/transconf/hooks
     install -m 0755 ${S}/example_transconf_hook ${D}${sysconfdir}/transconf/hooks/example
+
+    install -d ${D}${sysconfdir}/rcS.d/
+    install -d ${D}${sysconfdir}/init.d/
+    install -m 0755 ${S}/transconf-migrate-init ${D}${sysconfdir}/init.d/
+    ln -s ../init.d/transconf-migrate-init ${D}${sysconfdir}/rcS.d/S29transconf-migrate-init
 }
 
 do_install_ptest_append () {

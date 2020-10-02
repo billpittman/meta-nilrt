@@ -1,0 +1,74 @@
+#!/bin/bash
+set -euo pipefail
+readonly SCRIPT_NAME="transconf-migrate-init"
+
+# prints to kernel log and screen
+function error () {
+    echo "$SCRIPT_NAME: ERROR: $*" > /dev/kmsg || true
+    echo "$SCRIPT_NAME: ERROR: $*" || true
+    false
+}
+
+function info () {
+    echo "$SCRIPT_NAME: $*" > /dev/kmsg || true
+    echo "$SCRIPT_NAME: $*" || true
+}
+
+function cleanup() {
+    local exitCode="$?"
+ 
+    set +e
+
+    [ $exitCode -neq 0 ] && error "Exiting with error code : $exitCode"
+
+    exit "$exitCode"
+}
+
+trap cleanup EXIT
+
+function mount_overlay() {
+    readonly OVERLAY_PATH=$1
+    readonly IMAGE_PATH=$2
+
+    [ -d "$OVERLAY_PATH/lower" ] && [ -d "$OVERLAY_PATH/upper" ] && [ -d "$OVERLAY_PATH/work" ] && [ -d "$OVERLAY_PATH/image" ] || return 1
+
+    mkdir -p "$IMAGE_PATH"
+    mount -o ro -t squashfs "/boot/baserootfs.squashfs" "$OVERLAY_PATH/lower"
+    mount -t overlay -o lowerdir="$OVERLAY_PATH/lower,upperdir=$OVERLAY_PATH/upper,workdir=$OVERLAY_PATH/work" overlay "$IMAGE_PATH"
+    umount "$OVERLAY_PATH/lower"
+}
+
+readonly U_MNT="/mnt/niuser"
+readonly TC_IMAGE_PATH="$U_MNT/system-config-image.tgz"
+
+info "Mounting niuser partition at $U_MNT"
+mkdir -p "$U_MNT"
+mount /dev/niboot/niuser $U_MNT
+
+if [ -e "/etc/niboot/safemode" ]; then
+    # safemode
+    if [ -d "$U_MNT/overlay" ] ; then
+        info "Packaging configuration data from runmode"
+        mount_overlay "$U_MNT/overlay" "/mnt/userfs"
+        rm -fr $TC_IMAGE_PATH
+        info "TransConf save ..."
+        transconf -d -s "/mnt/userfs" save "$TC_IMAGE_PATH" >>/tmp/log 2>&1
+        info "TransConf restore..."
+        transconf -d restore "$TC_IMAGE_PATH" >>/tmp/log 2>&1
+    fi
+else
+    # runmode
+    if [ -d "$U_MNT/overlay.safemode" ] ; then
+        info "Packaging configuration data from safemode"
+        mount_overlay "$U_MNT/overlay.safemode" "/mnt/safemodefs"
+        rm -fr $TC_IMAGE_PATH
+        info "TransConf save ..."
+        transconf -d -s "/mnt/safemodefs" save "$TC_IMAGE_PATH" >>/tmp/log 2>&1
+        info "TransConf restore..."
+        transconf -d restore "$TC_IMAGE_PATH" >>/tmp/log 2>&1
+        rm -fr "$U_MNT/overlay.safemode"
+    fi
+#    umount /mnt/safemodefs
+#    umount $U_MNT
+fi
+
